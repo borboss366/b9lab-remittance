@@ -1,22 +1,26 @@
 var Remittance = artifacts.require("./Remittance.sol");
 var randomstring = require("randomstring");
+const addEvmFunctions = require("../utils/evmFunctions.js");
 
 
 contract('Remittance', function(accounts) {
+    addEvmFunctions(web3);
+    assert.isDefined(web3.evm);
+
     let owner = accounts[0];
     let banker = accounts[1];
     let dummy = accounts[2];
     let defaultWait = 10;
     let defaultEther = 239;
 
-    // it("cannot create empty contract", 
-    // () => {
-    //     return makeZeroValueContractCheck()
-    //     .then(makeZeroValueContractCheck())
-    //     .then(makeZeroValueContractCheck())
-    //     .then(makeZeroValueContractCheck())
-    //     .then(makeZeroValueContractCheck())
-    // })
+    it("cannot create empty contract", 
+    () => {
+        return makeZeroValueContractCheck()
+        .then(makeZeroValueContractCheck())
+        .then(makeZeroValueContractCheck())
+        .then(makeZeroValueContractCheck())
+        .then(makeZeroValueContractCheck())
+    })
 
 
     it("cannot withdraw, if the password was incorrect", 
@@ -216,12 +220,19 @@ contract('Remittance', function(accounts) {
 
     function waitForBlock(endblock) {
         // console.log(endblock, " ", web3.eth.blockNumber)
-        return skipBlock().then(() =>  { if (web3.eth.blockNumber <= endblock) { return waitForBlock(endblock) } else return })
+        return skipBlockFail().then(() =>  { if (web3.eth.blockNumber <= endblock) { return waitForBlock(endblock) } else return })
     }
 
     function skipBlock() {
         return createContract(dummy, defaultEther, defaultWait, "xxx", "yyy")
     }
+
+    function skipBlockFail() {
+        return new Promise(function(resolve, reject) {
+            web3.evm.mine(function(e, result) { resolve(result); });
+        });
+    }
+
     /*
     End of utility functions!
     */

@@ -13,7 +13,7 @@ contract Remittance {
     function Remittance(uint duration, string firstPass, string secondPass) 
         payable
         public {
-        //require(msg.value > 0);
+        require(msg.value > 0);
         owner = msg.sender;
         deadline = block.number + duration;
         hashCode = keccak256(firstPass, secondPass);
