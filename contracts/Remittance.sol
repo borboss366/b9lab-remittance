@@ -1,5 +1,5 @@
 pragma solidity ^0.4.15;
-
+import "./RemittanceLib.sol";
 
 contract Remittance {
     // the person who runs this exchange shop
@@ -10,18 +10,18 @@ contract Remittance {
     event LogWithdrawn(uint amount, address userAddress);
     event LogCancelled(uint amount, address ownerAddress);
 
-    function Remittance(uint duration, string firstPass, string secondPass) 
+    function Remittance(uint duration, bytes32 _hashCode) 
         payable
         public {
         require(msg.value > 0);
         owner = msg.sender;
         deadline = block.number + duration;
-        hashCode = keccak256(firstPass, secondPass);
+        hashCode = _hashCode;
     }
 
     function withdrawMoney(string firstPass, string secondPass) 
-        external {
-        require(hashCode == keccak256(firstPass, secondPass));
+        public {
+        require(hashCode == RemittanceLib.calculateHash(firstPass, secondPass));
         LogWithdrawn(this.balance, msg.sender);
         selfdestruct(msg.sender);
     }

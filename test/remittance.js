@@ -1,239 +1,138 @@
-var Remittance = artifacts.require("./Remittance.sol");
-var randomstring = require("randomstring");
-const addEvmFunctions = require("../utils/evmFunctions.js");
+const Remittance = artifacts.require("./Remittance.sol");
+const RemittanceLib = artifacts.require("./RemittanceLib.sol");
 
+const Promise = require("bluebird");
+const randomstring = require("randomstring");
+const expectedException = require("../utils/expectedException.js");
+const addEvmFunctions = require("../utils/evmFunctions.js");
 
 contract('Remittance', function(accounts) {
     addEvmFunctions(web3);
-    assert.isDefined(web3.evm);
+    Promise.promisifyAll(web3.eth, { suffix: "Promise" });
+    Promise.promisifyAll(web3.version, { suffix: "Promise" });
+    Promise.promisifyAll(web3.evm, { suffix: "Promise" });
 
+    let isTestRPC;
     let owner = accounts[0];
     let banker = accounts[1];
     let dummy = accounts[2];
-    let defaultWait = 10;
-    let defaultEther = 239;
+    let duration = 10;
+    
+    let lib; 
+    
+    before("should identify TestRPC", function() {
+        return web3.version.getNodePromise()
+            .then(node => isTestRPC = node.indexOf("EthereumJS TestRPC") >= 0);
+    });
 
-    it("cannot create empty contract", 
-    () => {
-        return makeZeroValueContractCheck()
-        .then(makeZeroValueContractCheck())
-        .then(makeZeroValueContractCheck())
-        .then(makeZeroValueContractCheck())
-        .then(makeZeroValueContractCheck())
+    before("should create a library", function() {
+        return RemittanceLib.new()
+        .then(instance => { lib = instance; });
     })
 
-
-    it("cannot withdraw, if the password was incorrect", 
-    () => {
-        return makeIncorrectCheck()
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-        .then(makeIncorrectCheck())
-    })
-
-    it("can withdraw, if the password was correct", 
-    () => {
-        return makeCorrectCheck()
-        .then(makeCorrectCheck())
-        .then(makeCorrectCheck())
-    })
-
-    it("withdraws the correct sum", 
-    () => {
-        return makeWithdrawCheck(239)
-        .then(makeCorrectCheck(666))
-        .then(makeCorrectCheck(999))
-    })
-
-    it("deposits the correct sum", 
-    () => {
-        return makeFundCheck(239)
-        .then(makeFundCheck(666))
-        .then(makeFundCheck(999))
-    })
-
-    it("allows to withdraw after time has passed",
-    () => {
-        return makeCancelCorrectCheck(defaultWait, defaultWait)
-        .then(makeCancelCorrectCheck(defaultWait, defaultWait + 1))
-        .then(makeCancelCorrectCheck(defaultWait, defaultWait + 2))
-    })
-
-    it("fails to withdraw before time has passed",
-    () => {
-        return makeCancelFailCheck(defaultWait, 0)
-        .then(makeCancelFailCheck(defaultWait, 1))
-        .then(makeCancelFailCheck(defaultWait, 2))
-        .then(makeCancelFailCheck(defaultWait, defaultWait - 1))
-    })
-
-    it("fails to withdraw for a user other than the owner",
-    () => {
-        return makeCancelWrongUserFailCheck(defaultWait, defaultWait)
-        .then(makeCancelWrongUserFailCheck(defaultWait, defaultWait + 1))
-        .then(makeCancelWrongUserFailCheck(defaultWait, defaultWait + 2))
-        .then(makeCancelWrongUserFailCheck(defaultWait, 0))
-        .then(makeCancelWrongUserFailCheck(defaultWait, 1))
-        .then(makeCancelWrongUserFailCheck(defaultWait, defaultWait - 1))
-    })
-
-
-    function createContract(acc, val, duration, pass1, pass2) {
-        return Remittance.new(duration, pass1, pass2, {from: acc, value: val});
-    }
-
-    function makeZeroValueContractCheck() {
-        return createContract(owner, 0, defaultWait, "zzz", "zzz")
-        .then(txn => assert.strictEqual(true, false, "XXXIt should fail"))
-        .catch(e => { 
-            if (e.toString().indexOf("XXX") != -1) {
-                assert.strictEqual(false, true, "Incorrect zero contract creation")
-            } 
-        })
-    }
-
-    function makeIncorrectCheck() {
-        let pass1 = randomstring.generate(7);
-        let pass2 = randomstring.generate(7);
-        let wrongPass1 = randomstring.generate(8);
-        let wrongPass2 = randomstring.generate(8);
-        
-        return createContract(owner, defaultEther, defaultWait, pass1, pass2)
-        .then(contract => {return contract.withdrawMoney(wrongPass1, wrongPass2, {from: banker})})
-        .then(txn => assert.strictEqual(true, false, "XXXIt should fail"))
-        .catch(e => { 
-            if (e.toString().indexOf("XXX") != -1) {
-                assert.strictEqual(false, true, "Incorrect password allowed")
-            } 
-        })
-    }
-
-    function makeCorrectCheck() {
-        let pass1 = randomstring.generate(7);
-        let pass2 = randomstring.generate(7);
-        
-        return createContract(owner, defaultEther, defaultWait, pass1, pass2)
-        .then(contract => { return contract.withdrawMoney(pass1, pass2, {from: banker}) })
-        .then(txn => {}).catch(e => { assert.strictEqual(true, false, "It should fail") })
-    }        
-
-    function makeWithdrawCheck(value) {
-        let pass1 = randomstring.generate(7);
-        let pass2 = randomstring.generate(7);
-        let contract;
-        let contractBal;
-        let before;
-        let after;
-        let gasUsed;
-        let gasPrice;
-
-        // create the contract with value in it
-        return createContract(owner, value, defaultWait, pass1, pass2)
-        .then(c => { contract = c; return getBalance(banker); })
-        .then(bal => { before = bal; return getBalance(contract.address); })
-        .then(bal => { contractBal = bal; return contract.withdrawMoney(pass1, pass2, {from: banker})} )
-        .then(txn => { gasUsed = txn.receipt.gasUsed; return web3.eth.getTransaction(txn.tx) })
-        .then(tx => { gasPrice = tx.gasPrice; return getBalance(banker); })
-        .then(bal => { 
-            after = bal;
-            let gasCost = gasPrice.times(gasUsed);
-            // console.log("Banker balance", contractBal.toString(10));
-            // console.log("Banker delta ", before.minus(after).toString(10), " delta ", gasCost.minus(value).toString(10));
-            // console.log(after.toString(10), " ", after.minus(before).toString(10), " ", gasCost.toString(10), gasCost.plus(after).minus(before).toString(10) ); 
-            assert.strictEqual(gasCost.add(after).toString(10), before.add(value).toString(10), "Sum is incorrect") })
-    }
-
-    function makeFundCheck(value) {
-        let contract;
-
-        // create the contract with value in it
-        return createContract(owner, value, defaultWait, randomstring.generate(7), randomstring.generate(7))
-        .then(c => { contract = c; return getBalance(contract.address); })
-        .then(bal => { assert.strictEqual("0", bal.minus(value).toString(10), "Deposit is correct") })
-    }
-
-    function makeCancelCorrectCheck(contractWait, actualWait) {
-        let contract;
-        
-        // create the contract with value in it
-        return createContract(owner, defaultEther, contractWait, randomstring.generate(7), randomstring.generate(7))
-        .then(c => { contract = c; return skipBlocks(actualWait)} )
-        .then(() => { return contract.cancelAndWithdraw({from: owner})})
-        .then(txn => {assert.strictEqual(true, true, "Cancel withdrawal is ok")})
-    }
-
-    function makeCancelWrongUserFailCheck(contractWait, actualWait) {
-        let contract;
-        
-        // create the contract with value in it
-        return createContract(owner, defaultEther, contractWait, randomstring.generate(7), randomstring.generate(7))
-        .then(c => { contract = c; return skipBlocks(actualWait)} )
-        .then(() => { return contract.cancelAndWithdraw({from: dummy})})
-        .then(() => { assert.strictEqual(false, true, "XXXCancel withdrawl is ok and it should not be")})
-        .catch(e => { 
-            if (e.toString().indexOf("XXX") != -1) {
-                assert.strictEqual(false, true, "Cancel withdrawl is failed")
-            } 
-        })
-    }
-
-
-    function makeCancelFailCheck(contractWait, actualWait) {
-        let contract;
-        
-        // create the contract with value in it
-        return createContract(owner, defaultEther, contractWait, randomstring.generate(7), randomstring.generate(7))
-        .then(c => { contract = c; /*return skipBlocks(actualWait)*/ return } )
-        .then(() => { return contract.cancelAndWithdraw({from: owner})})
-        .then(() => { assert.strictEqual(false, true, "XXXCancel withdrawl is ok and it should not be")})
-        .catch(e => { 
-            if (e.toString().indexOf("XXX") != -1) {
-                assert.strictEqual(false, true, "Cancel withdrawl is failed")
-            } 
-        })
-    }
-
-
-    // function makeZeroValueContractCheck() {
-    //     return createContract(owner, 0, defaultWait, "zzz", "zzz")
-    //     .then(txn => assert.fail) 
-    //     .catch(e => {})
-    // }
-
-    /*
-    Utility functions!
-    */
-    function getBalance(acc) {
-        return new Promise(function(resolve, reject) {
-            web3.eth.getBalance(acc, function(e, balance) { resolve(balance); });
+    describe("contract deployment", function() {
+        it("should be possible to deploy Remittance with value", function() {
+            return lib.calculateHash(randomstring.generate(7), randomstring.generate(7))
+            .then(hash => Remittance.new(duration, hash, { from: owner, value: 1, gas: 3000000  }))
+            .then(
+            () => { }, 
+            e => { throw new Error(e.message); });
         });
-    }
 
-    function skipBlocks(duration) {
-        return waitForBlock(web3.eth.blockNumber + duration);
-    }
-
-    function waitForBlock(endblock) {
-        // console.log(endblock, " ", web3.eth.blockNumber)
-        return skipBlockFail().then(() =>  { if (web3.eth.blockNumber <= endblock) { return waitForBlock(endblock) } else return })
-    }
-
-    function skipBlock() {
-        return createContract(dummy, defaultEther, defaultWait, "xxx", "yyy")
-    }
-
-    function skipBlockFail() {
-        return new Promise(function(resolve, reject) {
-            web3.evm.mine(function(e, result) { resolve(result); });
+        it("should not be possible to deploy Remittance without value", function() {
+            return lib.calculateHash(randomstring.generate(7), randomstring.generate(7))
+            .then(hash => Remittance.new(duration, hash, { from: owner  }))
+            .then(
+                () => { throw new Error("should have added some value"); },
+                e => { });
         });
-    }
+    });
 
-    /*
-    End of utility functions!
-    */
+    describe("withdrawal checks", function() {
+        let pass1;
+        let pass2; 
+        let wrongPass1;
+        let wrongPass2;
+        let contract;
+        let val = 239;
+
+        beforeEach("should create a hash and a contract", function() {
+            pass1 = randomstring.generate(7);
+            pass2 = randomstring.generate(7);
+            wrongPass1 = randomstring.generate(8);
+            wrongPass2 = randomstring.generate(8);
+
+            return lib.calculateHash(pass1, pass2)
+            .then(hash => Remittance.new(duration, hash, { from: owner, value: val, gas: 3000000  }))
+            .then(instance => contract = instance)
+        });
+
+        it ("should not be possible to withdraw with wrong password", function() {
+            return contract.withdrawMoney(wrongPass1, wrongPass2, {from: banker})
+            .then(
+                txn => { throw new Error("should not have allowed to withdraw with wrong password"); },
+                e => { });
+        })
+
+        it ("should be possible to withdraw with correct password", function() {
+            return contract.withdrawMoney(pass1, pass2, {from: banker})
+            .then(
+                txn => { },
+                e => { throw new Error("should have allowed to withdraw with correct password"); });
+        })
+
+        it ("should deposit the correct sum", function() {
+            return web3.eth.getBalancePromise(contract.address)
+            .then(bal => assert.strictEqual("0", bal.minus(val).toString(10), "Deposit is correct"))
+        })
+
+        it ("should withdraw the correct sum", function() {
+            let before; let after; let gasUsed;
+
+            return web3.eth.getBalancePromise(banker)
+            .then(bal => {before = bal; return contract.withdrawMoney(pass1, pass2, {from: banker}) })
+            .then(txn => { gasUsed = txn.receipt.gasUsed; return web3.eth.getTransaction(txn.tx) })
+            .then(tx => { gasPrice = tx.gasPrice; return web3.eth.getBalancePromise(banker); })
+            .then(bal => { 
+                after = bal;
+                let gasCost = gasPrice.times(gasUsed);
+                assert.strictEqual(gasCost.add(after).toString(10), before.add(val).toString(10), "Sum is incorrect") })
+        }) 
+
+        it ("should not allow to owner to withdraw before that the time has passed", function() {
+            return web3.evm.minePromise()
+            .then(dl => { return contract.cancelAndWithdraw({from: owner}) })
+            .then(
+                txn => { throw new Error("should not have allowed to withdraw before "); },
+                e => { });
+        })
+
+        function mineUntilFinish() {
+            return checkDeadline()
+            .then(finished => { if (!finished) return web3.evm.minePromise().then(() => mineUntilFinish()) })
+        }
+        
+        // this works
+        function checkDeadline() {
+            let deadline;
+            return contract.deadline()
+            .then(dl => { deadline = dl; return web3.eth.getBlockNumberPromise()})
+            .then(bl => { return deadline.cmp(bl) < 0 })
+        }
+
+        it ("should allow to owner to withdraw after that the time has passed", function() {
+            return mineUntilFinish()
+            .then(() => {return checkDeadline() } )
+            .then(dl => { return contract.cancelAndWithdraw({from: owner})})
+        })
+
+        it ("should not allow to other party to withdraw after that the time has passed", function() {
+            return mineUntilFinish()
+            .then(() => {return checkDeadline() } )
+            .then(dl => { return contract.cancelAndWithdraw({from: banker})})
+            .then(
+                txn => { throw new Error("should not have allowed to withdraw"); },
+                e => { });
+        })
+    })
 });

@@ -1,8 +1,8 @@
- var Remittance = artifacts.require("./Remittance.sol");
-// var MetaCoin = artifacts.require("./MetaCoin.sol");
+var Remittance = artifacts.require("./Remittance.sol");
+var RemittanceLib = artifacts.require("./RemittanceLib.sol");
 
 module.exports = function(deployer) {
-  //deployer.deploy(Remittance/*, {value: 2000000}*/);
-  // deployer.link(ConvertLib, MetaCoin);
-  // deployer.deploy(MetaCoin);
+  deployer.deploy(RemittanceLib);
+  deployer.link(RemittanceLib, Remittance);
+  // deployer.deploy(Remittance);
 };
